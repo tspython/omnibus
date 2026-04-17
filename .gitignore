@@ -1,0 +1,26 @@
+# Dependencies
+node_modules
+.bun
+
+# Build output
+out
+dist
+release
+*.tsbuildinfo
+
+# Editor / OS
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+.claude
+
+# Runtime
+*.log
+.env
+.env.local
+.env.*.local
+
+# Electron / Vite caches
+.vite
+.cache

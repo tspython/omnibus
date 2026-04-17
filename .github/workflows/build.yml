@@ -1,0 +1,115 @@
+name: Build
+
+on:
+  push:
+    branches: [main, master]
+    tags: ["v*.*.*"]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  # Fast pre-flight so we don't fan out to three runners if lint/types/tests
+  # are broken. The desktop builds then reuse bun's install cache.
+  verify:
+    name: Verify (lint, types, tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Lint
+        run: bun run lint
+      - name: Type-check
+        run: bun run tsc
+      - name: Test
+        run: bun test
+
+  # Each runner builds its native installer(s). Matrix exclusions aren't
+  # needed because electron-builder only targets the host platform by default.
+  build:
+    name: Build (${{ matrix.os }})
+    needs: verify
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            artifact_name: omnibus-mac
+            artifact_glob: |
+              release/*.dmg
+              release/*.zip
+              release/*.blockmap
+          - os: windows-latest
+            artifact_name: omnibus-win
+            artifact_glob: |
+              release/*.exe
+              release/*.blockmap
+          - os: ubuntu-latest
+            artifact_name: omnibus-linux
+            artifact_glob: |
+              release/*.AppImage
+              release/*.deb
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build renderer/main/preload bundles
+        run: bun run build
+
+      - name: Package (macOS)
+        if: matrix.os == 'macos-latest'
+        # CSC_IDENTITY_AUTO_DISCOVERY off produces an unsigned build. To ship
+        # a signed + notarized app, add Apple Developer secrets (CSC_LINK,
+        # CSC_KEY_PASSWORD, APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID)
+        # to the repo and drop this env var.
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: bunx electron-builder --mac --publish never
+
+      - name: Package (Windows)
+        if: matrix.os == 'windows-latest'
+        run: bunx electron-builder --win --publish never
+
+      - name: Package (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: bunx electron-builder --linux --publish never
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.artifact_glob }}
+          if-no-files-found: error
+          retention-days: 30
+
+  # On tag push, gather every runner's artifacts into a single GitHub Release.
+  release:
+    name: Publish release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
+          draft: true
+          generate_release_notes: true
