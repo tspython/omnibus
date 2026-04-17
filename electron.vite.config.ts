@@ -35,7 +35,12 @@ export default defineConfig({
     },
   },
   renderer: {
-    root: "src/renderer",
+    root: resolve(__dirname, "src/renderer"),
+    // Relative base so packaged file:// URLs resolve the /assets/... chunks
+    // against the HTML's own directory. Without this the tags use absolute
+    // paths like /assets/foo.js which file:// treats as filesystem root and
+    // the app boots to a black window because the script never loads.
+    base: "./",
     resolve: {
       alias: {
         "@": resolve(__dirname, "src/renderer/src"),
@@ -44,7 +49,7 @@ export default defineConfig({
     },
     plugins: [react(), tailwindcss()],
     build: {
-      outDir: "../../out/renderer",
+      outDir: resolve(__dirname, "out/renderer"),
       emptyOutDir: true,
       rollupOptions: {
         input: resolve(__dirname, "src/renderer/index.html"),
