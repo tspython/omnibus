@@ -15,10 +15,14 @@ mac:
       arch: [arm64, x64]
     - target: zip
       arch: [arm64, x64]
-  hardenedRuntime: true
+  # identity: null forces ad-hoc signing of every binary (main exec,
+  # frameworks, helpers) with an empty Team ID so Apple Silicon's signature-
+  # match check passes on launch. Without this, only the main exec gets ad-
+  # hoc signed and the Electron Framework's upstream signature causes a Team
+  # ID mismatch at load time on arm64.
+  identity: null
+  hardenedRuntime: false
   gatekeeperAssess: false
-  entitlements: build/entitlements.mac.plist
-  entitlementsInherit: build/entitlements.mac.plist
   icon: build/icon.png
 
 dmg:
